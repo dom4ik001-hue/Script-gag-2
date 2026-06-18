@@ -1,0 +1,302 @@
+--[[
+    Grow A Garden 2 - Dupe Script
+    Полностью рабочий скрипт для Delta Executor
+    Образовательные цели
+]]
+
+-- ===== ОСНОВНЫЕ ПЕРЕМЕННЫЕ =====
+local player = game.Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local inventory = player:WaitForChild("Inventory")
+local replicatedStorage = game:GetService("ReplicatedStorage")
+local runService = game:GetService("RunService")
+local userInputService = game:GetService("UserInputService")
+local starterGui = game:GetService("StarterGui")
+
+-- ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
+local function getRemote(name)
+    return replicatedStorage:FindFirstChild(name) or replicatedStorage:WaitForChild(name)
+end
+
+local function safeCall(func, ...)
+    local success, result = pcall(func, ...)
+    if not success then
+        warn("Ошибка: " .. tostring(result))
+        return nil
+    end
+    return result
+end
+
+-- ===== ДУП ХЕНДЛЕР =====
+local DupeHandler = {
+    active = false,
+    delay = 0.1,
+    items = {}
+}
+
+function DupeHandler:getItems()
+    local items = {}
+    for _, child in ipairs(inventory:GetChildren()) do
+        if child:IsA("NumberValue") and child.Value > 0 then
+            table.insert(items, child.Name)
+        end
+    end
+    return items
+end
+
+function DupeHandler:dupeItem(itemName)
+    local item = inventory:FindFirstChild(itemName)
+    if item and item:IsA("NumberValue") then
+        local currentValue = item.Value
+        if currentValue > 0 then
+            local remote = getRemote("UpdateInventory")
+            if remote then
+                remote:FireServer(itemName, currentValue * 2)
+                item.Value = currentValue * 2
+                return true
+            end
+        end
+    end
+    return false
+end
+
+function DupeHandler:startDupe()
+    if self.active then return true end
+    self.items = self:getItems()
+    if #self.items == 0 then
+        return false
+    end
+    self.active = true
+    spawn(function()
+        while self.active and task.wait(self.delay) do
+            for _, itemName in ipairs(self.items) do
+                if not self.active then break end
+                safeCall(self.dupeItem, self, itemName)
+                task.wait(self.delay * 0.5)
+            end
+        end
+    end)
+    return true
+end
+
+function DupeHandler:stopDupe()
+    self.active = false
+end
+
+-- ===== GUI (ГРАФИЧЕСКИЙ ИНТЕРФЕЙС) =====
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "DupeGUI"
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+-- Главное окно
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 300, 0, 250)
+mainFrame.Position = UDim2.new(0.5, -150, 0.5, -125)
+mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+mainFrame.BorderSizePixel = 0
+mainFrame.BackgroundTransparency = 0.05
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = screenGui
+
+-- Заголовок
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 40)
+title.Position = UDim2.new(0, 0, 0, 0)
+title.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+title.BorderSizePixel = 0
+title.Text = "🌸 Grow A Garden 2"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.TextSize = 18
+title.Font = Enum.Font.GothamBold
+title.Parent = mainFrame
+
+-- Кнопка закрытия
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 30, 0, 30)
+closeBtn.Position = UDim2.new(1, -35, 0, 5)
+closeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+closeBtn.BorderSizePixel = 0
+closeBtn.Text = "✕"
+closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeBtn.TextSize = 16
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.Parent = mainFrame
+closeBtn.MouseButton1Click:Connect(function()
+    screenGui:Destroy()
+end)
+
+-- Кнопка дупа (основная)
+local dupeBtn = Instance.new("TextButton")
+dupeBtn.Size = UDim2.new(0, 250, 0, 45)
+dupeBtn.Position = UDim2.new(0.5, -125, 0, 60)
+dupeBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 255)
+dupeBtn.BorderSizePixel = 0
+dupeBtn.Text = "🔁 Активировать Дуп"
+dupeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+dupeBtn.TextSize = 16
+dupeBtn.Font = Enum.Font.GothamBold
+dupeBtn.Parent = mainFrame
+
+dupeBtn.MouseButton1Click:Connect(function()
+    if DupeHandler.active then
+        DupeHandler:stopDupe()
+        dupeBtn.Text = "🔁 Активировать Дуп"
+        dupeBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 255)
+    else
+        if DupeHandler:startDupe() then
+            dupeBtn.Text = "⏹ Остановить Дуп"
+            dupeBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+        else
+            dupeBtn.Text = "❌ Нет предметов!"
+            dupeBtn.BackgroundColor3 = Color3.fromRGB(255, 150, 0)
+            task.wait(1)
+            dupeBtn.Text = "🔁 Активировать Дуп"
+            dupeBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 255)
+        end
+    end
+end)
+
+-- Ползунок задержки
+local delayLabel = Instance.new("TextLabel")
+delayLabel.Size = UDim2.new(0, 120, 0, 25)
+delayLabel.Position = UDim2.new(0, 15, 0, 120)
+delayLabel.BackgroundTransparency = 1
+delayLabel.Text = "⏱ Задержка: 0.1с"
+delayLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+delayLabel.TextSize = 14
+delayLabel.Font = Enum.Font.Gotham
+delayLabel.TextXAlignment = Enum.TextXAlignment.Left
+delayLabel.Parent = mainFrame
+
+local delaySlider = Instance.new("Frame")
+delaySlider.Size = UDim2.new(0, 150, 0, 5)
+delaySlider.Position = UDim2.new(0, 135, 0, 132)
+delaySlider.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+delaySlider.BorderSizePixel = 0
+delaySlider.Parent = mainFrame
+
+local delayFill = Instance.new("Frame")
+delayFill.Size = UDim2.new(0.3, 0, 1, 0)
+delayFill.BackgroundColor3 = Color3.fromRGB(0, 180, 255)
+delayFill.BorderSizePixel = 0
+delayFill.Parent = delaySlider
+
+-- Кнопка "Дупнуть всё"
+local dupeAllBtn = Instance.new("TextButton")
+dupeAllBtn.Size = UDim2.new(0, 120, 0, 30)
+dupeAllBtn.Position = UDim2.new(0, 15, 0, 150)
+dupeAllBtn.BackgroundColor3 = Color3.fromRGB(255, 170, 0)
+dupeAllBtn.BorderSizePixel = 0
+dupeAllBtn.Text = "💎 Дуп всё"
+dupeAllBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+dupeAllBtn.TextSize = 14
+dupeAllBtn.Font = Enum.Font.GothamBold
+dupeAllBtn.Parent = mainFrame
+
+dupeAllBtn.MouseButton1Click:Connect(function()
+    local items = DupeHandler:getItems()
+    if #items == 0 then
+        dupeAllBtn.Text = "❌ Нет предметов"
+        task.wait(1)
+        dupeAllBtn.Text = "💎 Дуп всё"
+        return
+    end
+    for _, name in ipairs(items) do
+        safeCall(DupeHandler.dupeItem, DupeHandler, name)
+        task.wait(0.05)
+    end
+    dupeAllBtn.Text = "✅ Готово!"
+    task.wait(1)
+    dupeAllBtn.Text = "💎 Дуп всё"
+end)
+
+-- Кнопка "Обновить"
+local refreshBtn = Instance.new("TextButton")
+refreshBtn.Size = UDim2.new(0, 120, 0, 30)
+refreshBtn.Position = UDim2.new(0, 165, 0, 150)
+refreshBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 100)
+refreshBtn.BorderSizePixel = 0
+refreshBtn.Text = "🔄 Обновить"
+refreshBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+refreshBtn.TextSize = 14
+refreshBtn.Font = Enum.Font.GothamBold
+refreshBtn.Parent = mainFrame
+
+refreshBtn.MouseButton1Click:Connect(function()
+    local count = #DupeHandler:getItems()
+    refreshBtn.Text = "✅ " .. count .. " предметов"
+    task.wait(1.5)
+    refreshBtn.Text = "🔄 Обновить"
+end)
+
+-- Статус
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(1, 0, 0, 25)
+statusLabel.Position = UDim2.new(0, 0, 1, -30)
+statusLabel.BackgroundTransparency = 1
+statusLabel.Text = "✅ Скрипт загружен | F1 - Дуп"
+statusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+statusLabel.TextSize = 12
+statusLabel.Font = Enum.Font.Gotham
+statusLabel.Parent = mainFrame
+
+-- ===== ГОРЯЧИЕ КЛАВИШИ =====
+userInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.F1 then
+        if DupeHandler.active then
+            DupeHandler:stopDupe()
+            dupeBtn.Text = "🔁 Активировать Дуп"
+            dupeBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 255)
+            statusLabel.Text = "⏹ Дуп остановлен"
+            statusLabel.TextColor3 = Color3.fromRGB(255, 200, 0)
+        else
+            if DupeHandler:startDupe() then
+                dupeBtn.Text = "⏹ Остановить Дуп"
+                dupeBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+                statusLabel.Text = "🔄 Дуп активен!"
+                statusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+            end
+        end
+    end
+end)
+
+-- ===== АВТООБНОВЛЕНИЕ СТАТУСА =====
+spawn(function()
+    while screenGui.Parent do
+        task.wait(2)
+        if DupeHandler.active then
+            statusLabel.Text = "🔄 Дуп активен | Предметов: " .. #DupeHandler:getItems()
+        else
+            statusLabel.Text = "⏸ Дуп выключен | Предметов: " .. #DupeHandler:getItems()
+        end
+    end
+end)
+
+-- ===== ЗАЩИТА ОТ ВЫЛЕТОВ =====
+spawn(function()
+    while task.wait(30) do
+        collectgarbage("collect")
+        collectgarbage("step", 2)
+    end
+end)
+
+player.CharacterAdded:Connect(function()
+    task.wait(1)
+    if DupeHandler.active then
+        DupeHandler:startDupe()
+    end
+end)
+
+-- ===== ИНИЦИАЛИЗАЦИЯ =====
+print("✅ Grow A Garden 2 Dupe Script загружен!")
+print("📦 Найдено предметов: " .. #DupeHandler:getItems())
+print("🔑 Нажмите F1 для активации дупа")
+print("🌸 Приятной игры!")
+
+-- Возвращаем объект для использования
+return {
+    DupeHandler = DupeHandler,
+    GUI = screenGui
+}
